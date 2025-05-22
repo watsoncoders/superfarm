@@ -55,38 +55,63 @@ def resolve_product_url(tree, original_url: str) -> str:
             return res[0].strip()
     return original_url
 
-def scrape_url(url: str) -> dict | None:
+def scrape_url(url: str) -> list[dict]:
     try:
         res = requests.get(url, headers=get_random_headers(), timeout=20)
         res.raise_for_status()
         res.encoding = res.apparent_encoding or res.encoding
     except Exception as e:
         print(f"שגיאה בטעינת {url}: {e}")
-        return None
+        return []
+
     tree = html.fromstring(res.text)
-    data = {"url": url, "product_url": resolve_product_url(tree, url)}
+    base_data = {"url": url, "product_url": resolve_product_url(tree, url)}
+
     for key, xp in XPATHS.items():
-        data[key] = extract_node(tree, xp, key)
+        base_data[key] = extract_node(tree, xp, key)
 
-    # פענוח מתוך price_html אם קיים
-    if data.get("price_html"):
-        m1 = re.search(r'data-price="([\d\.]+)"', data["price_html"])
-        m2 = re.search(r'data-discountprice="([\d\.]+)"', data["price_html"])
-        data["price_value"] = m1.group(1) if m1 else ""
-        data["discount_price"] = m2.group(1) if m2 else ""
+    # מחירים
+    if base_data.get("price_html"):
+        m1 = re.search(r'data-price="([\d\.]+)"', base_data["price_html"])
+        m2 = re.search(r'data-discountprice="([\d\.]+)"', base_data["price_html"])
+        base_data["price_value"] = m1.group(1) if m1 else ""
+        base_data["discount_price"] = m2.group(1) if m2 else ""
     else:
-        data["price_value"] = ""
-        data["discount_price"] = ""
+        base_data["price_value"] = ""
+        base_data["discount_price"] = ""
 
-    # בדיקה לפי class של add-to-basket-wrap
+    # זמינות מלאי לפי class
     if tree.xpath('//div[contains(@class, "add-to-basket-wrap") and contains(@class, "outOfStock")]'):
-        data["add_to_cart_status"] = "0"
+        base_data["add_to_cart_status"] = "0"
     elif tree.xpath('//div[contains(@class, "add-to-basket-wrap") and contains(@class, "inStock")]'):
-        data["add_to_cart_status"] = "50"
+        base_data["add_to_cart_status"] = "50"
     else:
-        data["add_to_cart_status"] = "50"  # ברירת מחדל אם לא נמצא כלום
+        base_data["add_to_cart_status"] = "50"
 
-    return data
+    # וריאנטים - צבעים
+    rows = []
+    variant_divs = tree.xpath('//*[@id="product-header"]/div[2]/div[1]/div[2]//div[contains(@class, "variant")]')
+    colors = []
+    for var in variant_divs:
+        style_nodes = var.xpath(".//div[@style]")
+        for node in style_nodes:
+            style = node.get("style", "")
+            match = re.search(r'background-color\s*:\s*(#[0-9a-fA-F]+)', style)
+            if match:
+                colors.append(match.group(1))
+
+    # אם יש צבעים – צור שורה לכל צבע
+    if colors:
+        for color in colors:
+            row = base_data.copy()
+            row["variant_color"] = color
+            rows.append(row)
+    else:
+        row = base_data.copy()
+        row["variant_color"] = ""
+        rows.append(row)
+
+    return rows
 
 def main(urls_file: str, out_csv: str):
     urls = [u.strip() for u in Path(urls_file).read_text(encoding="utf-8-sig").splitlines() if u.strip()]
@@ -95,7 +120,7 @@ def main(urls_file: str, out_csv: str):
         return
 
     fieldnames = ["url", "product_url"] + list(XPATHS.keys()) + [
-        "price_value", "discount_price", "add_to_cart_status"
+        "price_value", "discount_price", "add_to_cart_status", "variant_color"
     ]
     out_path = Path(out_csv)
     need_header = not out_path.exists() or out_path.stat().st_size == 0
@@ -107,11 +132,12 @@ def main(urls_file: str, out_csv: str):
 
         for i, url in enumerate(urls, 1):
             print(f"[{i}/{len(urls)}] טוען {url}")
-            row = scrape_url(url)
-            if row:
-                writer.writerow(row)
+            rows = scrape_url(url)
+            if rows:
+                for row in rows:
+                    writer.writerow(row)
                 f.flush()
-                print("  ✔ נשמר")
+                print(f"  ✔ נשמרו {len(rows)} וריאנטים")
             else:
                 print("  ✖ נכשל")
             time.sleep(random.uniform(2, 5))  # מניעת חסימות
