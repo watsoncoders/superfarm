@@ -20,8 +20,8 @@ XPATHS = {
     "brand":      '//*[@id="product-header"]/div[2]/div[1]/div[1]/div/a/span',
     "title":      '//*[@id="product-header"]/div[2]/div[1]/div[1]/div/h1',
     "subtitle":   '//*[@id="product-header"]/div[2]/div[1]/div[1]/div/span/div/div[2]/text()',
-    "desc_p1":    '//*[@id="product-info"]/div/div[1]/p[1]',
-    "desc_p2":    '//*[@id="product-info"]/div/div[1]/p[2]',
+    "desc_p1":    '//*[@id="product-info"]/div/div[1]',
+    "desc_p2":    '//*[@id="product-info"]/div/div[2]',
     "compare_price": '//*[@id="product-info"]/div/div[2]/span[4]',
     "video_embed":   '//*[@id="player"]',
     "img1": '//*[@id="preview"]/div[1]/div[1]/div[1]/img',
@@ -78,6 +78,10 @@ def scrape_url(url: str) -> dict | None:
         data["price_value"] = ""
         data["discount_price"] = ""
 
+    # בדיקה אם ניתן להוסיף לסל (0 אם קיים, 50 אם לא)
+    exists = tree.xpath('//*[@id="addProductToCart"]/span[2]')
+    data["add_to_cart_status"] = "0" if exists else "50"
+
     return data
 
 def main(urls_file: str, out_csv: str):
@@ -86,7 +90,9 @@ def main(urls_file: str, out_csv: str):
         print("לא נמצאו כתובות.")
         return
 
-    fieldnames = ["url", "product_url"] + list(XPATHS.keys()) + ["price_value", "discount_price"]
+    fieldnames = ["url", "product_url"] + list(XPATHS.keys()) + [
+        "price_value", "discount_price", "add_to_cart_status"
+    ]
     out_path = Path(out_csv)
     need_header = not out_path.exists() or out_path.stat().st_size == 0
 
@@ -115,6 +121,6 @@ def main(urls_file: str, out_csv: str):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("שימוש: python3 1.py urls.txt results.csv")
+        print("שימוש: python xpath_scraper.py urls.txt results.csv")
         sys.exit(1)
     main(sys.argv[1], sys.argv[2])
