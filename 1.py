@@ -28,8 +28,7 @@ XPATHS = {
     "price_value": 'css:#product-header > div.product-details > div.details-wrap > div.row > div > span > div',
 }
 
-
-def extract_node(tree, xpath: str) -> str:
+def extract_node(tree, xpath: str, field_name: str = "") -> str:
     try:
         if xpath.startswith('css:'):
             sel = xpath[4:]
@@ -41,6 +40,8 @@ def extract_node(tree, xpath: str) -> str:
     if not nodes:
         return ""
     node = nodes[0]
+    if field_name == "price_html":
+        return html.tostring(node, encoding="unicode", with_tail=False).strip()
     if isinstance(node, str):
         return node.strip()
     if node.get("src"):
@@ -64,20 +65,12 @@ def scrape_url(url: str) -> dict | None:
         res.raise_for_status()
         res.encoding = res.apparent_encoding or res.encoding
     except Exception as e:
-        print(f"שגיאה בטעינה {url}: {e}")
+        print(f"שגיאה בטעינת {url}: {e}")
         return None
     tree = html.fromstring(res.text)
     data = {"url": url, "product_url": resolve_product_url(tree, url)}
     for key, xp in XPATHS.items():
-        data[key] = extract_node(tree, xp)
-    # הוספת מחירים מתוך ה־div
-    try:
-        price_node = tree.cssselect(".item-price")[0]
-        data["price_value"] = price_node.get("data-price", "")
-        data["discount_price"] = price_node.get("data-discountprice", "")
-    except:
-        data["price_value"] = ""
-        data["discount_price"] = ""
+        data[key] = extract_node(tree, xp, key)
     return data
 
 def main(urls_file: str, out_csv: str):
@@ -86,7 +79,7 @@ def main(urls_file: str, out_csv: str):
         print("לא נמצאו כתובות.")
         return
 
-    fieldnames = ["url", "product_url"] + list(XPATHS.keys()) + ["discount_price"]
+    fieldnames = ["url", "product_url"] + list(XPATHS.keys())
     out_path = Path(out_csv)
     need_header = not out_path.exists() or out_path.stat().st_size == 0
 
@@ -104,10 +97,10 @@ def main(urls_file: str, out_csv: str):
                 print("  ✔ נשמר")
             else:
                 print("  ✖ נכשל")
-            time.sleep(random.uniform(2, 5))  # השהייה אקראית למניעת חסימה
+            time.sleep(random.uniform(2, 5))  # מניעת חסימות
 
-    # שמירת אקסל
-    print("ממיר לקובץ Excel …")
+    # המרה ל-Excel
+    print("ממיר CSV לקובץ Excel …")
     pd = importlib.import_module("pandas")
     df = pd.read_csv(out_csv, encoding="utf-8-sig")
     xlsx_path = out_path.with_suffix(".xlsx")
@@ -116,6 +109,6 @@ def main(urls_file: str, out_csv: str):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("שימוש: python3 1.py urls.txt results.csv")
+        print("שימוש: python xpath_scraper.py urls.txt results.csv")
         sys.exit(1)
     main(sys.argv[1], sys.argv[2])
