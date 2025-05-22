@@ -25,7 +25,7 @@ XPATHS = {
     "compare_price": '//*[@id="product-info"]/div/div[2]/span[4]',
     "video_embed":   '//*[@id="player"]',
     "img1": '//*[@id="preview"]/div[1]/div[1]/div[1]/img',
-    "price_html": 'css:#product-header > div.product-details > div.details-wrap > div.row > div > span > div',
+    "price_value": 'css:#product-header > div.product-details > div.details-wrap > div.row > div > span > div',
 }
 
 
