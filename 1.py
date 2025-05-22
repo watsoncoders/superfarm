@@ -78,10 +78,15 @@ def scrape_url(url: str) -> dict | None:
         data["price_value"] = ""
         data["discount_price"] = ""
 
-    # בדיקה אם המוצר אינו זמין (הטקסט: עדכנו כשהמוצר חוזר למלאי)
+    # בדיקת טקסט availability בכפתור
     cart_nodes = tree.xpath('//*[@id="addProductToCart"]/span[2]')
-    if cart_nodes and "עדכנו כשהמוצר חוזר למלאי" in cart_nodes[0].text_content():
-        data["add_to_cart_status"] = "0"
+    if cart_nodes:
+        cart_text = cart_nodes[0].text_content().strip().replace("\n", "")
+        print(f"🔍 טקסט כפתור: {cart_text!r}")
+        if "עדכנו כשהמוצר חוזר למלאי" in cart_text:
+            data["add_to_cart_status"] = "0"
+        else:
+            data["add_to_cart_status"] = "50"
     else:
         data["add_to_cart_status"] = "50"
 
