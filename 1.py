@@ -55,43 +55,42 @@ def resolve_product_url(tree, original_url: str) -> str:
             return res[0].strip()
     return original_url
 
-def scrape_url(url: str) -> list[dict]:
+def scrape_url(url: str) -> dict | None:
     try:
         res = requests.get(url, headers=get_random_headers(), timeout=20)
         res.raise_for_status()
         res.encoding = res.apparent_encoding or res.encoding
     except Exception as e:
         print(f"שגיאה בטעינת {url}: {e}")
-        return []
+        return None
 
     tree = html.fromstring(res.text)
-    base_data = {"url": url, "product_url": resolve_product_url(tree, url)}
+    data = {"url": url, "product_url": resolve_product_url(tree, url)}
 
     for key, xp in XPATHS.items():
-        base_data[key] = extract_node(tree, xp, key)
+        data[key] = extract_node(tree, xp, key)
 
     # מחירים
-    if base_data.get("price_html"):
-        m1 = re.search(r'data-price="([\d\.]+)"', base_data["price_html"])
-        m2 = re.search(r'data-discountprice="([\d\.]+)"', base_data["price_html"])
-        base_data["price_value"] = m1.group(1) if m1 else ""
-        base_data["discount_price"] = m2.group(1) if m2 else ""
+    if data.get("price_html"):
+        m1 = re.search(r'data-price="([\d\.]+)"', data["price_html"])
+        m2 = re.search(r'data-discountprice="([\d\.]+)"', data["price_html"])
+        data["price_value"] = m1.group(1) if m1 else ""
+        data["discount_price"] = m2.group(1) if m2 else ""
     else:
-        base_data["price_value"] = ""
-        base_data["discount_price"] = ""
+        data["price_value"] = ""
+        data["discount_price"] = ""
 
     # זמינות מלאי לפי class
     if tree.xpath('//div[contains(@class, "add-to-basket-wrap") and contains(@class, "outOfStock")]'):
-        base_data["add_to_cart_status"] = "0"
+        data["add_to_cart_status"] = "0"
     elif tree.xpath('//div[contains(@class, "add-to-basket-wrap") and contains(@class, "inStock")]'):
-        base_data["add_to_cart_status"] = "50"
+        data["add_to_cart_status"] = "50"
     else:
-        base_data["add_to_cart_status"] = "50"
+        data["add_to_cart_status"] = "50"
 
-    # וריאנטים - צבעים
-    rows = []
-    variant_divs = tree.xpath('//*[@id="product-header"]/div[2]/div[1]/div[2]//div[contains(@class, "variant")]')
+    # וריאנטים - צבעים לתוך variation1 ... variation12
     colors = []
+    variant_divs = tree.xpath('//*[@id="product-header"]/div[2]/div[1]/div[2]//div[contains(@class, "variant")]')
     for var in variant_divs:
         style_nodes = var.xpath(".//div[@style]")
         for node in style_nodes:
@@ -100,18 +99,10 @@ def scrape_url(url: str) -> list[dict]:
             if match:
                 colors.append(match.group(1))
 
-    # אם יש צבעים – צור שורה לכל צבע
-    if colors:
-        for color in colors:
-            row = base_data.copy()
-            row["variant_color"] = color
-            rows.append(row)
-    else:
-        row = base_data.copy()
-        row["variant_color"] = ""
-        rows.append(row)
+    for i in range(1, 13):  # variation1 עד variation12
+        data[f"variation{i}"] = colors[i - 1] if i <= len(colors) else ""
 
-    return rows
+    return data
 
 def main(urls_file: str, out_csv: str):
     urls = [u.strip() for u in Path(urls_file).read_text(encoding="utf-8-sig").splitlines() if u.strip()]
@@ -120,8 +111,9 @@ def main(urls_file: str, out_csv: str):
         return
 
     fieldnames = ["url", "product_url"] + list(XPATHS.keys()) + [
-        "price_value", "discount_price", "add_to_cart_status", "variant_color"
-    ]
+        "price_value", "discount_price", "add_to_cart_status"
+    ] + [f"variation{i}" for i in range(1, 13)]
+
     out_path = Path(out_csv)
     need_header = not out_path.exists() or out_path.stat().st_size == 0
 
@@ -132,15 +124,14 @@ def main(urls_file: str, out_csv: str):
 
         for i, url in enumerate(urls, 1):
             print(f"[{i}/{len(urls)}] טוען {url}")
-            rows = scrape_url(url)
-            if rows:
-                for row in rows:
-                    writer.writerow(row)
+            row = scrape_url(url)
+            if row:
+                writer.writerow(row)
                 f.flush()
-                print(f"  ✔ נשמרו {len(rows)} וריאנטים")
+                print("  ✔ נשמר")
             else:
                 print("  ✖ נכשל")
-            time.sleep(random.uniform(2, 5))  # מניעת חסימות
+            time.sleep(random.uniform(2, 5))
 
     print("ממיר CSV ל־Excel …")
     pd = importlib.import_module("pandas")
