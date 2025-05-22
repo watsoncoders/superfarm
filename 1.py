@@ -25,8 +25,7 @@ XPATHS = {
     "compare_price": '//*[@id="product-info"]/div/div[2]/span[4]',
     "video_embed":   '//*[@id="player"]',
     "img1": '//*[@id="preview"]/div[1]/div[1]/div[1]/img',
-    # שדה מחיר לפי data-price
-    "price_value": 'css:.item-price',
+    "price_html": 'css:#product-header > div.product-details > div.details-wrap > div.row > div > span > div',
 }
 
 
@@ -117,6 +116,6 @@ def main(urls_file: str, out_csv: str):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("שימוש: python xpath_scraper.py urls.txt results.csv")
+        print("שימוש: python3 1.py urls.txt results.csv")
         sys.exit(1)
     main(sys.argv[1], sys.argv[2])
