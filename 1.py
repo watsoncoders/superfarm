@@ -25,16 +25,12 @@ XPATHS = {
     "compare_price": '//*[@id="product-info"]/div/div[2]/span[4]',
     "video_embed":   '//*[@id="player"]',
     "img1": '//*[@id="preview"]/div[1]/div[1]/div[1]/img',
-    "price_html": 'css:#product-header > div.product-details > div.details-wrap > div.row > div > span > div',
+    "price_html": '//*[@id="product-header"]/div[@class="product-details"]/div[@class="details-wrap"]/div[@class="row"]/div/span/div',
 }
 
 def extract_node(tree, xpath: str, field_name: str = "") -> str:
     try:
-        if xpath.startswith('css:'):
-            sel = xpath[4:]
-            nodes = tree.cssselect(sel)
-        else:
-            nodes = tree.xpath(xpath)
+        nodes = tree.xpath(xpath)
     except Exception:
         return ""
     if not nodes:
@@ -71,6 +67,17 @@ def scrape_url(url: str) -> dict | None:
     data = {"url": url, "product_url": resolve_product_url(tree, url)}
     for key, xp in XPATHS.items():
         data[key] = extract_node(tree, xp, key)
+
+    # פענוח מתוך price_html אם קיים
+    if data.get("price_html"):
+        m1 = re.search(r'data-price="([\d\.]+)"', data["price_html"])
+        m2 = re.search(r'data-discountprice="([\d\.]+)"', data["price_html"])
+        data["price_value"] = m1.group(1) if m1 else ""
+        data["discount_price"] = m2.group(1) if m2 else ""
+    else:
+        data["price_value"] = ""
+        data["discount_price"] = ""
+
     return data
 
 def main(urls_file: str, out_csv: str):
@@ -79,7 +86,7 @@ def main(urls_file: str, out_csv: str):
         print("לא נמצאו כתובות.")
         return
 
-    fieldnames = ["url", "product_url"] + list(XPATHS.keys())
+    fieldnames = ["url", "product_url"] + list(XPATHS.keys()) + ["price_value", "discount_price"]
     out_path = Path(out_csv)
     need_header = not out_path.exists() or out_path.stat().st_size == 0
 
@@ -99,8 +106,7 @@ def main(urls_file: str, out_csv: str):
                 print("  ✖ נכשל")
             time.sleep(random.uniform(2, 5))  # מניעת חסימות
 
-    # המרה ל-Excel
-    print("ממיר CSV לקובץ Excel …")
+    print("ממיר CSV ל־Excel …")
     pd = importlib.import_module("pandas")
     df = pd.read_csv(out_csv, encoding="utf-8-sig")
     xlsx_path = out_path.with_suffix(".xlsx")
@@ -109,6 +115,6 @@ def main(urls_file: str, out_csv: str):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print("שימוש: python xpath_scraper.py urls.txt results.csv")
+        print("שימוש: python3 1.py urls.txt results.csv")
         sys.exit(1)
     main(sys.argv[1], sys.argv[2])
